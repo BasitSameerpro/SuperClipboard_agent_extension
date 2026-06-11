@@ -1,0 +1,6 @@
+.agent_supercliboard/
+.wxt/
+.output/
+node_modules/
+forensics_output/
+Backup/
