@@ -9,12 +9,27 @@ export default defineConfig({
     permissions: [
       "storage", 
       "clipboardWrite", 
-      "activeTab" // <--- THIS FIXES THE GREYED OUT ICON
+      "activeTab",
+      "unlimitedStorage",
+      "contextMenus"
     ],
+    icons: {
+      "16": "icon-16.png",
+      "32": "icon-32.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    },
+    action: {
+      default_icon: {
+        "16": "icon-16.png",
+        "32": "icon-32.png",
+        "48": "icon-48.png",
+        "128": "icon-128.png"
+      }
+    },
     host_permissions: [
-      "https://api.github.com/*",
-      "https://raw.githubusercontent.com/*",
-      "<all_urls>" // <--- ALLOWS IT TO RUN ON EVERY WEBSITE
+      "https://basitsameerpro.github.io/*",
+      "https://raw.githubusercontent.com/*"
     ],
     browser_specific_settings: {
       gecko: {
@@ -22,11 +37,14 @@ export default defineConfig({
         strict_min_version: "109.0"
       }
     },
+    omnibox: {
+      keyword: "ac"
+    },
     commands: {
       "_execute_action": {
         "suggested_key": {
-          "default": "Alt+Shift+X",
-          "mac": "Alt+Shift+X"
+          "default": "Ctrl+Shift+Space",
+          "mac": "Ctrl+Shift+Space"
         },
         "description": "Open Agentic Clipboard"
       }

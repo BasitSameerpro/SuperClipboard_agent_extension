@@ -1,8 +1,25 @@
 import { fetchAndCacheSkills } from '../utils/githubFetcher';
+import { browser } from 'wxt/browser';
 
 export default defineBackground(() => {
+  const triggerPopup = async () => {
+    try {
+      await browser.action.openPopup();
+    } catch (err) {
+      console.error('[Background] Failed to open popup natively:', err);
+    }
+  };
+
   // Fetch skills when extension is installed or updated
   browser.runtime.onInstalled.addListener(async (details) => {
+    if (details.reason === 'install') {
+      try {
+        await browser.tabs.create({ url: browser.runtime.getURL('/onboarding.html' as any) });
+      } catch (err) {
+        console.error('[Background] Failed to open onboarding tab:', err);
+      }
+    }
+
     if (details.reason === 'install' || details.reason === 'update') {
       console.log('[Background] Fetching skills cache...');
       try {
@@ -11,6 +28,17 @@ export default defineBackground(() => {
       } catch (err) {
         console.error('[Background] Failed to cache skills:', err);
       }
+    }
+
+    // Create right-click context menu
+    try {
+      browser.contextMenus.create({
+        id: "open-agentic",
+        title: "Open Agentic Clipboard",
+        contexts: ["page", "selection", "action"]
+      });
+    } catch (err) {
+      console.warn('[Background] Context menu creation skipped/failed:', err);
     }
   });
 
@@ -25,25 +53,17 @@ export default defineBackground(() => {
     }
   });
 
-  // Handle messages from content scripts
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'openPopup') {
-      console.log('[Background] Opening popup via content script request');
-      const actionApi = browser.action || (globalThis as any).chrome?.action;
-      if (actionApi && actionApi.openPopup) {
-        actionApi.openPopup().catch((err: any) => {
-          console.error('[Background] Failed to open popup using Action API:', err);
-        });
-      } else {
-        const browserActionApi = browser.browserAction || (globalThis as any).chrome?.browserAction;
-        if (browserActionApi && browserActionApi.openPopup) {
-          browserActionApi.openPopup().catch((err: any) => {
-            console.error('[Background] Failed to open popup using BrowserAction API:', err);
-          });
-        } else {
-          console.error('[Background] openPopup API not found in action or browserAction');
-        }
-      }
+  // Context menu click handler
+  browser.contextMenus.onClicked.addListener((info) => {
+    if (info.menuItemId === 'open-agentic') {
+      triggerPopup();
     }
   });
+
+  // Omnibox activation handler
+  if (browser.omnibox !== undefined) {
+    browser.omnibox.onInputEntered.addListener(() => {
+      triggerPopup();
+    });
+  }
 });

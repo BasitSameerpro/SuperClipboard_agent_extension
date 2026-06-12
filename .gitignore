@@ -4,3 +4,4 @@
 node_modules/
 forensics_output/
 Backup/
+.gitignore/
