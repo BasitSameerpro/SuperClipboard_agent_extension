@@ -25,6 +25,50 @@ export default function App() {
     handleSkillAction
   } = useSkills();
 
+  // Folder Extractor Configuration State
+  const [excludePatterns, setExcludePatterns] = useState<string[]>(DEFAULT_EXCLUDES);
+
+  const isStandaloneBundler = typeof window !== 'undefined' && window.location.search.includes('view=bundler_standalone');
+
+  if (isStandaloneBundler) {
+    return (
+      <div style={{ 
+        background: '#0a0a0a', 
+        padding: '20px', 
+        width: '100%', 
+        minHeight: '450px', 
+        boxSizing: 'border-box', 
+        color: '#ffffff', 
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', 
+        fontSize: '13px', 
+        lineHeight: '1.5', 
+        position: 'relative'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #222' }}>
+          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#3b82f6' }}>Folder Bundler</h3>
+        </div>
+        <FolderBundler
+          excludePatterns={excludePatterns}
+          setStatus={setStatus}
+          autoTrigger={true}
+        />
+        {status && (
+          <div style={{ 
+            marginTop: '16px', 
+            fontSize: '12px', 
+            textAlign: 'center', 
+            color: status.startsWith('✓') ? '#4ade80' : status.startsWith('Error') || status.startsWith('Failed') ? '#f87171' : '#888', 
+            padding: '10px', 
+            borderRadius: '10px', 
+            background: status.startsWith('✓') ? 'rgba(74, 222, 128, 0.05)' : status.startsWith('Error') || status.startsWith('Failed') ? 'rgba(248, 113, 113, 0.05)' : 'transparent' 
+          }}>
+            {status}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Tab State
   const [activeTab, setActiveTab] = useState<'skills' | 'extractor'>('skills');
   
@@ -37,9 +81,7 @@ export default function App() {
   // Autocomplete visibility (for dynamic sizing)
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Folder Extractor Configuration State
-  const [excludePatterns, setExcludePatterns] = useState<string[]>(DEFAULT_EXCLUDES);
-  const [compression, setCompression] = useState<'none' | 'minify' | 'skeleton'>('none');
+
 
   useEffect(() => {
     // Load ignore list settings from storage
@@ -205,8 +247,6 @@ export default function App() {
       {/* Tab 2: Folder Extractor Content */}
       {activeTab === 'extractor' && (
         <FolderBundler
-          compression={compression}
-          setCompression={setCompression}
           excludePatterns={excludePatterns}
           setStatus={setStatus}
         />

@@ -79,25 +79,36 @@ function isExcluded(path: string, patterns: string[]): boolean {
   return false;
 }
 
-export async function pickAndBundleFolder(
+async function pickAndBundleFolderFallback(
   options: { minify: boolean, skeleton: boolean, excludePatterns: string[] },
   onProgress?: (msg: string) => void
 ): Promise<string> {
-  try {
-    const dirHandle = await (window as any).showDirectoryPicker();
-    const files: { path: string; content: string }[] = [];
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.setAttribute('webkitdirectory', '');
+    input.setAttribute('directory', '');
+    input.setAttribute('multiple', '');
     
-    async function processDirectory(dir: any, currentPath: string = '') {
-      for await (const entry of dir.values()) {
-        const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
-        
-        // Skip excluded patterns AND sensitive files
-        if (isSensitiveFilename(entry.name) || isExcluded(entryPath, options.excludePatterns)) {
-          continue;
+    input.onchange = async (event: any) => {
+      try {
+        const fileList: FileList = event.target.files;
+        if (!fileList || fileList.length === 0) {
+          reject(new Error("No files selected"));
+          return;
         }
-
-        if (entry.kind === 'file') {
-          // Strict Whitelist of known text/code extensions
+        
+        const files: { path: string; content: string }[] = [];
+        
+        for (let i = 0; i < fileList.length; i++) {
+          const file = fileList[i];
+          const entryPath = file.webkitRelativePath || file.name;
+          const fileName = file.name;
+          
+          if (isSensitiveFilename(fileName) || isExcluded(entryPath, options.excludePatterns)) {
+            continue;
+          }
+          
           const validExtensions = [
             '.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.txt', '.csv', 
             '.py', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs',
@@ -105,48 +116,129 @@ export async function pickAndBundleFolder(
             '.css', '.scss', '.less', '.sql', '.ini', '.env'
           ];
           
-          const hasValidExtension = validExtensions.some(ext => entry.name.toLowerCase().endsWith(ext)) || 
-                                    !entry.name.includes('.'); // Allow extensionless files like Dockerfile or Makefile
-
+          const hasValidExtension = validExtensions.some(ext => fileName.toLowerCase().endsWith(ext)) || 
+                                    !fileName.includes('.');
+                                    
           if (!hasValidExtension) {
             continue;
           }
           
-          const file = await entry.getFile();
+          if (file.size > 1000000) continue;
+          
           try {
-            if (file.size > 1000000) continue;
-            
             const content = await file.text();
-            
             if (containsSecrets(content)) {
-              throw new Error(`Security alert: Potential API key found in ${entryPath}`);
+              reject(new Error(`Security alert: Potential API key found in ${entryPath}`));
+              return;
             }
-            
             files.push({ path: entryPath, content });
             if (onProgress) onProgress(`Read: ${entryPath}`);
           } catch (e) {
             console.warn(`Could not read ${entryPath}`);
           }
-        } else if (entry.kind === 'directory') {
-          await processDirectory(entry, entryPath);
+        }
+        
+        if (onProgress) onProgress('Bundling files...');
+        let bundledText = `<repository>\n`;
+        for (const f of files) {
+          const processedContent = compressCode(f.content, options);
+          bundledText += `<file path="${escapeXml(f.path)}">\n${escapeXml(processedContent)}\n</file>\n`;
+        }
+        bundledText += `</repository>`;
+        
+        resolve(bundledText);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    
+    input.onerror = (err) => {
+      reject(err);
+    };
+    
+    input.click();
+  });
+}
+
+export async function pickAndBundleFolder(
+  options: { minify: boolean, skeleton: boolean, excludePatterns: string[] },
+  onProgress?: (msg: string) => void
+): Promise<string> {
+  // Check if showDirectoryPicker is supported in this browser
+  if (typeof (window as any).showDirectoryPicker === 'function') {
+    try {
+      const dirHandle = await (window as any).showDirectoryPicker();
+      const files: { path: string; content: string }[] = [];
+      
+      async function processDirectory(dir: any, currentPath: string = '') {
+        for await (const entry of dir.values()) {
+          const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+          
+          if (isSensitiveFilename(entry.name) || isExcluded(entryPath, options.excludePatterns)) {
+            continue;
+          }
+
+          if (entry.kind === 'file') {
+            const validExtensions = [
+              '.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.txt', '.csv', 
+              '.py', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs',
+              '.php', '.rb', '.sh', '.bash', '.yml', '.yaml', '.xml', '.html', 
+              '.css', '.scss', '.less', '.sql', '.ini', '.env'
+            ];
+            
+            const hasValidExtension = validExtensions.some(ext => entry.name.toLowerCase().endsWith(ext)) || 
+                                      !entry.name.includes('.');
+
+            if (!hasValidExtension) {
+              continue;
+            }
+            
+            const file = await entry.getFile();
+            try {
+              if (file.size > 1000000) continue;
+              
+              const content = await file.text();
+              
+              if (containsSecrets(content)) {
+                throw new Error(`Security alert: Potential API key found in ${entryPath}`);
+              }
+              
+              files.push({ path: entryPath, content });
+              if (onProgress) onProgress(`Read: ${entryPath}`);
+            } catch (e) {
+              console.warn(`Could not read ${entryPath}`);
+            }
+          } else if (entry.kind === 'directory') {
+            await processDirectory(entry, entryPath);
+          }
         }
       }
-    }
 
-    if (onProgress) onProgress('Selecting directory...');
-    await processDirectory(dirHandle);
+      if (onProgress) onProgress('Selecting directory...');
+      await processDirectory(dirHandle);
 
-    if (onProgress) onProgress('Bundling files...');
-    let bundledText = `<repository>\n`;
-    for (const f of files) {
-      const processedContent = compressCode(f.content, options);
-      bundledText += `<file path="${escapeXml(f.path)}">\n${escapeXml(processedContent)}\n</file>\n`;
+      if (onProgress) onProgress('Bundling files...');
+      let bundledText = `<repository>\n`;
+      for (const f of files) {
+        const processedContent = compressCode(f.content, options);
+        bundledText += `<file path="${escapeXml(f.path)}">\n${escapeXml(processedContent)}\n</file>\n`;
+      }
+      bundledText += `</repository>`;
+      
+      return bundledText;
+    } catch (err: any) {
+      console.error("Native showDirectoryPicker failed/cancelled:", err);
+      // If the user cancelled the dialog natively, rethrow it
+      if (err.name === 'AbortError') {
+        throw err;
+      }
+      // Fallback if it failed for other reasons
+      if (onProgress) onProgress('Using fallback directory picker...');
+      return pickAndBundleFolderFallback(options, onProgress);
     }
-    bundledText += `</repository>`;
-    
-    return bundledText;
-  } catch (err) {
-    console.error("Folder picker cancelled or failed", err);
-    throw err;
+  } else {
+    // If not supported natively (e.g. Firefox), use the HTML5 input fallback
+    if (onProgress) onProgress('Opening folder picker...');
+    return pickAndBundleFolderFallback(options, onProgress);
   }
 }
